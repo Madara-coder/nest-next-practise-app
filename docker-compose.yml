@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradeflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradeflow}
+      POSTGRES_DB: tradeflow
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tradeflow']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    profiles: ['app']
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://tradeflow:${POSTGRES_PASSWORD:-tradeflow}@postgres:5432/tradeflow
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-me-32-chars-min}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-whsec_local_demo}
+      CORS_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: 'false'
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    profiles: ['app']
+    environment:
+      API_URL: http://backend:4000
+      COOKIE_SECURE: 'false'
+    ports:
+      - '3000:3000'
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:
